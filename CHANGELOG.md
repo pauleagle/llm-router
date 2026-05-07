@@ -2,6 +2,151 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.1.0] - 2026-05-07
+
+### Added
+
+- Integrated `model-fit-profiler` routing recommendations into `llm-router`.
+- Expanded task-based routing from basic intent routing to profiler-driven task routing.
+- Added support for the following task types:
+
+```txt
+short_question
+analysis
+coding
+debug
+draft_generation
+knowledge_refine
+prompt_engineering
+router
+summarization
+general
+```
+
+- Added support for profiler-style model policy fields:
+
+```txt
+primary
+fallback
+fast
+quality
+explanation
+```
+
+- Added external task system prompt configuration through:
+
+```txt
+task_system_prompts.json
+```
+
+- Added separation between:
+  - model routing policy
+  - task-specific system prompts
+  - runtime router execution
+- Added support for `task_type` as the canonical router output field.
+- Added backward compatibility for the legacy `intent` router output field.
+- Added backward compatibility for legacy model policy fields:
+  - `primaryModel`
+  - `fallbackModel`
+  - `systemPromptLines`
+- Added router fallback model support.
+- Added runtime debug endpoint:
+
+```txt
+GET /debug/routes
+```
+
+- Added richer `/health` response including:
+  - router version
+  - router model
+  - preloaded models
+
+### Changed
+
+- Updated `server.ts` for `v1.1.0` profiler-driven routing.
+- Router model is now resolved from `intent-config.json`:
+
+```json
+{
+  "router": {
+    "primary": "phi3:mini",
+    "fallback": "gemma3:1b"
+  }
+}
+```
+
+- Preload behavior now uses the configured router model instead of a hardcoded model.
+- Model selection now resolves models in this order:
+  - `primary`
+  - legacy `primaryModel`
+  - analysis fallback
+  - hardcoded safety fallback
+- Single-model gate fallback now resolves models in this order:
+  - `fast`
+  - `fallback`
+  - legacy `fallbackModel`
+  - `quality`
+  - `explanation`
+  - `primary`
+  - legacy `primaryModel`
+- OpenAI-compatible non-streaming responses now include router metadata:
+
+```json
+{
+  "router": {
+    "task_type": "analysis",
+    "confidence": 0.95,
+    "reason": "..."
+  }
+}
+```
+
+- Internal non-streaming `/api/chat` responses now include router metadata.
+- Router classification now normalizes invalid task types to `analysis`.
+- Router confidence values are now normalized to the range `0.0` to `1.0`.
+
+### Fixed
+
+- Reduced coupling between `server.ts` and task-specific prompts.
+- Avoided duplicating system prompts inside `intent-config.json`.
+- Improved migration path from v1.0.0 intent-based routing to v1.1.0 task-based routing.
+- Improved resilience when router output uses the old `intent` field.
+- Improved resilience when router output is invalid JSON or does not match the expected schema.
+- Improved stream parsing safety by skipping malformed upstream stream lines in debug mode.
+- Improved OpenAI-compatible embedding input handling for string and array input values.
+
+### Known Limitations
+
+- Router classification may still misclassify ambiguous technical concept questions as `short_question`.
+- No deterministic routing override layer yet.
+- No automatic retry or repair pass for malformed router JSON beyond fallback normalization.
+- No automatic import command for `model-fit-profiler` recommendation files.
+- No runtime feedback loop from actual user satisfaction back into `model-fit-profiler`.
+- Token accounting still depends on what Ollama returns.
+- No persistent request tracing or evaluation log yet.
+
+### Notes
+
+This release is the first profiler-driven routing release.
+
+The intended workflow is:
+
+```txt
+model-fit-profiler
+  → phase1 profiling
+  → phase2 LLM-as-a-judge
+  → phase3 routing recommendations
+  → intent-config.json
+  → llm-router runtime routing
+```
+
+Conceptually:
+
+```txt
+model-fit-profiler = evaluate and recommend
+llm-router         = route and execute
+```
+
 ## [v1.0.0] - 2026-04-30
 
 ### Added
