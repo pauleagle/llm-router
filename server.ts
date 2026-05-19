@@ -1,9 +1,9 @@
 import express from 'express';
-import { execSync } from 'child_process';
+import * as childProcess from 'child_process';
 import intentConfigJson from './intent-config.json';
 import taskSystemPromptsJson from './task_system_prompts.json';
 
-const app = express();
+export const app = express();
 app.use(express.json());
 
 /**
@@ -22,7 +22,7 @@ const DEBUG = process.env.DEBUG === 'true';
  * 3. router 支援 task_type / intent 兩種欄位，方便從舊版平滑升級
  */
 
-type TaskType =
+export type TaskType =
   | 'short_question'
   | 'analysis'
   | 'coding'
@@ -148,7 +148,7 @@ const VALID_TASK_TYPES: ReadonlySet<TaskType> = new Set([
   'general'
 ]);
 
-type RouterResult = {
+export type RouterResult = {
   task_type: TaskType;
   confidence: number;
   reason?: string;
@@ -161,12 +161,12 @@ type RouterRawResult = {
   reason?: string;
 };
 
-type ChatMessage = {
+export type ChatMessage = {
   role: 'system' | 'user' | 'assistant';
   content: string;
 };
 
-type OllamaChatResponse = {
+export type OllamaChatResponse = {
   model?: string;
   created_at?: string;
   message?: {
@@ -183,13 +183,13 @@ type OllamaChatResponse = {
   embedding?: number[];
 };
 
-type GenerationPlan = {
+export type GenerationPlan = {
   model: string;
   messages: ChatMessage[];
   routing: RouterResult;
 };
 
-function normalizeTaskType(value: unknown): TaskType {
+export function normalizeTaskType(value: unknown): TaskType {
   if (typeof value === 'string' && VALID_TASK_TYPES.has(value as TaskType)) {
     return value as TaskType;
   }
@@ -197,7 +197,7 @@ function normalizeTaskType(value: unknown): TaskType {
   return 'analysis';
 }
 
-function normalizeConfidence(value: unknown): number {
+export function normalizeConfidence(value: unknown): number {
   if (typeof value !== 'number' || Number.isNaN(value)) {
     return 0.0;
   }
@@ -205,7 +205,7 @@ function normalizeConfidence(value: unknown): number {
   return Math.max(0, Math.min(1, value));
 }
 
-function safeParseRouterResult(raw: string): RouterResult {
+export function safeParseRouterResult(raw: string): RouterResult {
   try {
     const parsed = JSON.parse(raw) as RouterRawResult;
 
@@ -307,9 +307,11 @@ async function routeIntentWithFallback(userInput: string): Promise<RouterResult>
  * Single-model gate（P620 專用）
  * =====================
  */
-function hasRunningGenerationModel(): boolean {
+export function hasRunningGenerationModel(ollamaPsOutput?: string): boolean {
   try {
-    const out = execSync('ollama ps', { encoding: 'utf-8' }).trim();
+    const out =
+      ollamaPsOutput ??
+      childProcess.execSync('ollama ps', { encoding: 'utf-8' }).trim();
     const lines = out.split('\n').filter(line => line.trim());
 
     // 第一行是 header。
@@ -326,7 +328,7 @@ function hasRunningGenerationModel(): boolean {
   }
 }
 
-function resolvePrimaryModel(taskType: TaskType): string {
+export function resolvePrimaryModel(taskType: TaskType): string {
   const cfg = intentConfig[taskType] ?? intentConfig.analysis;
 
   return (
@@ -338,7 +340,7 @@ function resolvePrimaryModel(taskType: TaskType): string {
   );
 }
 
-function resolveFallbackModel(taskType: TaskType): string {
+export function resolveFallbackModel(taskType: TaskType): string {
   const cfg = intentConfig[taskType] ?? intentConfig.analysis;
 
   // v1.1.0 policy：
@@ -357,7 +359,7 @@ function resolveFallbackModel(taskType: TaskType): string {
   );
 }
 
-function resolveSystemPrompt(taskType: TaskType): string {
+export function resolveSystemPrompt(taskType: TaskType): string {
   const prompt = taskSystemPrompts[taskType];
 
   if (typeof prompt === 'string' && prompt.trim()) {
@@ -378,13 +380,17 @@ function resolveSystemPrompt(taskType: TaskType): string {
  * Phase 2: Model Selector + Prompt Builder
  * =====================
  */
-function selectAndBuildPrompt(taskType: TaskType, userInput: string): {
+export function selectAndBuildPrompt(
+  taskType: TaskType,
+  userInput: string,
+  runningGenerationModel?: boolean
+): {
   model: string;
   messages: ChatMessage[];
 } {
   const primaryModel = resolvePrimaryModel(taskType);
   const fallbackModel = resolveFallbackModel(taskType);
-  const running = hasRunningGenerationModel();
+  const running = runningGenerationModel ?? hasRunningGenerationModel();
 
   let model = primaryModel;
 
@@ -414,7 +420,7 @@ function selectAndBuildPrompt(taskType: TaskType, userInput: string): {
  * Shared Router Pipeline
  * =====================
  */
-async function buildGenerationPlan(messages: ChatMessage[]): Promise<GenerationPlan> {
+export async function buildGenerationPlan(messages: ChatMessage[]): Promise<GenerationPlan> {
   const userInput =
     [...messages].reverse().find(message => message.role === 'user')?.content ?? '';
 
@@ -459,7 +465,7 @@ async function callOllamaChat(plan: GenerationPlan, stream: boolean) {
  * OpenAI-compatible helpers
  * =====================
  */
-function toOpenAIChatCompletion(json: OllamaChatResponse, plan: GenerationPlan) {
+export function toOpenAIChatCompletion(json: OllamaChatResponse, plan: GenerationPlan) {
   return {
     id: `chatcmpl-local-${Date.now()}`,
     object: 'chat.completion',
@@ -803,14 +809,20 @@ app.get('/debug/routes', (_, res) => {
   });
 });
 
-app.listen(PORT, () => {
-  console.log(`Ollama router running at http://localhost:${PORT}`);
-  console.log('Node 20 / TS6 / Node16 module mode');
-  console.log(`DEBUG=${DEBUG}`);
-  console.log(`Router model=${DEFAULT_ROUTER_MODEL}`);
+export function startServer() {
+  return app.listen(PORT, () => {
+    console.log(`Ollama router running at http://localhost:${PORT}`);
+    console.log('Node 20 / TS6 / Node16 module mode');
+    console.log(`DEBUG=${DEBUG}`);
+    console.log(`Router model=${DEFAULT_ROUTER_MODEL}`);
 
-  // 啟動後立即非同步預載，不阻塞 server 啟動。
-  preloadModels().catch(err => {
-    console.error('[preload] failed', err);
+    // 啟動後立即非同步預載，不阻塞 server 啟動。
+    preloadModels().catch(err => {
+      console.error('[preload] failed', err);
+    });
   });
-});
+}
+
+if (require.main === module) {
+  startServer();
+}
