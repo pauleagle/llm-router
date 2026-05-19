@@ -2,6 +2,36 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- Added Jest-based unit test coverage for router core behavior:
+  - router task type normalization
+  - router confidence normalization
+  - router JSON parsing and legacy `intent` compatibility
+  - model policy resolution
+  - single-model gate behavior
+  - OpenAI-compatible response mapping
+- Added StrykerJS mutation testing configuration for the router core test surface.
+- Added npm scripts for build, Jest tests, watch mode, and mutation testing:
+  - `npm run build`
+  - `npm test`
+  - `npm run test:watch`
+  - `npm run test:mutation`
+
+### Changed
+
+- Exported selected router core helpers from `server.ts` so they can be tested directly.
+- Wrapped server startup in `startServer()` and guarded it behind direct module execution so importing `server.ts` in tests does not start the Express server.
+- Allowed single-model gate checks to accept injected `ollama ps` output for deterministic tests.
+- Added TypeScript deprecation suppression for the current Node module resolution setting under TypeScript 6.
+
+### Internal
+
+- Established an initial mutation testing baseline focused on covered router core logic.
+- Scoped mutation testing away from Express route handlers and server startup code until those areas have dedicated tests.
+
 ## [v1.1.0] - 2026-05-07
 
 ### Added
